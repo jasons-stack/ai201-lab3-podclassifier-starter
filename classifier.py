@@ -55,7 +55,26 @@ def build_few_shot_prompt(labeled_examples: list[dict], description: str) -> str
 
     Before writing code, complete specs/classifier-spec.md.
     """
-    return ""
+    task_instruction = """You are classifying podcast episodes by their format. Classify the episode into exactly one of these four labels:
+
+    - interview: a conversation between a host and one or more guests
+    - solo: a single host speaking from memory, experience, or opinion — no guests, no assembled external sources
+    - panel: multiple guests with roughly equal speaking time, often debating or discussing a topic together
+    - narrative: a story assembled from external sources — interviews, archival audio, reporting — with a clear narrative arc
+
+    Return your answer in exactly this format:
+    Label: <label>
+    Reasoning: <one or two sentences>
+
+    Do not explain the taxonomy. Do not return anything else."""
+    examples_block = ""
+    if labeled_examples:
+        examples_block = "\n\nHere are labeled examples:\n\n"
+        for ex in labeled_examples:
+            examples_block += f"Title: {ex['title']}\nDescription: {ex['description']}\nLabel: {ex['label']}\n\n---\n\n"
+
+    new_episode = f"Now classify this episode:\n\nTitle: (unknown)\nDescription: {description}\nLabel: ?"
+    return task_instruction + examples_block + new_episode
 
 
 def classify_episode(description: str, labeled_examples: list[dict]) -> dict:
@@ -76,7 +95,31 @@ def classify_episode(description: str, labeled_examples: list[dict]) -> dict:
 
     Before writing code, complete specs/classifier-spec.md.
     """
-    return {
-        "label": None,
-        "reasoning": "Classifier not yet implemented. Complete Milestone 2.",
-    }
+    try:
+        prompt = build_few_shot_prompt(labeled_examples, description)
+
+        response = _client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+        )
+
+        response_text = response.choices[0].message.content
+        print(f"Raw response: {response_text}")
+
+        label = "unknown"
+        reasoning = response_text
+
+        for line in response_text.strip().splitlines():
+            if line.lower().startswith("label:"):
+                extracted = line.split(":", 1)[1].strip().lower()
+                extracted = extracted.strip("*").strip()
+                if extracted in VALID_LABELS:
+                    label = extracted
+            elif line.lower().startswith("reasoning:"):
+                reasoning = line.split(":", 1)[1].strip()
+
+        return {"label": label, "reasoning": reasoning}
+
+    except Exception as e:
+        return {"label": "unknown", "reasoning": f"Classification failed: {str(e)}"}

@@ -95,6 +95,16 @@ the format below:" followed by the output format you chose.
 makes parsing reliable? Think about: a single label on its own line?
 A structured format like "Label: X / Reasoning: Y"? JSON?
 What are the tradeoffs?]
+
+Use a structured format that is easy to parse reliably:
+
+Label: <label>
+Reasoning: <one or two sentences>
+
+This is easier to parse than JSON (no need to handle malformed JSON) and 
+more reliable than a single line (separates label from reasoning cleanly).
+Strip and lowercase the label value before validating against VALID_LABELS.
+
 ```
 
 ---
@@ -104,6 +114,11 @@ What are the tradeoffs?]
 ```
 [blank — what if labeled_examples is empty? What if the description is very
 short? How does your prompt handle these?]
+
+- If labeled_examples is empty, skip the examples section and classify 
+  based on the task instruction alone.
+- If the description is very short, the prompt still works, no special 
+  handling needed. The LLM will do its best with what's there.
 ```
 
 ---
@@ -162,6 +177,13 @@ Extract the response text from:
 [blank — how do you extract the label and reasoning from the LLM's text output?
 What string operations or parsing logic do you need?
 This depends on the output format you chose in build_few_shot_prompt.]
+
+Split the response text by newlines. Find the line starting with "Label:" 
+and extract the value after the colon, strip whitespace and convert to 
+lowercase. Find the line starting with "Reasoning:" and extract the rest 
+as the reasoning string. If either line is missing, set label to "unknown" 
+and reasoning to the full raw response.
+
 ```
 
 ---
@@ -171,6 +193,10 @@ This depends on the output format you chose in build_few_shot_prompt.]
 ```
 [blank — what do you do if the LLM returns a label that isn't in VALID_LABELS?
 What should label be set to?]
+
+After parsing, check if the extracted label is in VALID_LABELS. If it is, 
+use it. If not, set label to "unknown".
+
 ```
 
 ---
@@ -181,6 +207,12 @@ What should label be set to?]
 [blank — what could go wrong? (Network error? Unparseable response?)
 What should the function return if something fails?
 Hint: the evaluation loop runs 20 calls — one bad response shouldn't crash everything.]
+
+Wrap the entire function in a try/except. If anything fails (network error, 
+unparseable response, missing keys), return:
+{"label": "unknown", "reasoning": "Classification failed due to an error."}
+This ensures one bad call doesn't crash the 20-episode evaluation loop.
+
 ```
 
 ---
@@ -213,24 +245,33 @@ any labels you're unsure about. Annotation quality is part of the lab.
 **Test: what does the raw LLM response look like for one episode?**
 
 ```
-Episode tested: [title]
-Raw response text: [paste it here]
+Episode tested: Dr. Priya Nair on the Science of Sleep Deprivation
+Raw response text: Label: interview
+Reasoning: The episode features a conversation between a host and Dr. Priya 
+Nair, discussing her research and studies on sleep deprivation, which matches 
+the format of an interview.
 ```
 
 **How did you parse the label out of the response?**
 
 ```
 [describe the string operations — strip, split, lower, etc.]
+Split response by newlines, find the line starting with "Label:", extract 
+the value after the colon, strip whitespace and convert to lowercase, then 
+validate against VALID_LABELS.
 ```
 
 **Did any episodes return `"unknown"`? If so, why?**
 
 ```
 [yes / no — if yes, what did the raw response look like?]
+No, the Label:/Reasoning: format was returned consistently.
 ```
 
 **One thing about the output format that surprised you:**
 
 ```
-[your answer here]
+The model followed the exact output format requested without deviation, 
+making parsing straightforward.
+
 ```
